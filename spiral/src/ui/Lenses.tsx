@@ -106,9 +106,8 @@ function Chart({ chart }: { chart: NonNullable<Insight["chart"]> }) {
   );
 }
 
-/** Until there are enough thoughts for the mirrors: how far along, and a first reading. */
+/** Until there are enough thoughts for the mirrors: how far along. The First Spark follows it. */
 function FormingCard({ forming }: { forming: Forming }) {
-  const left = forming.needed - forming.count;
   return (
     <article className="pattern">
       <h3 className="pattern__title">Constellation forming</h3>
@@ -122,22 +121,7 @@ function FormingCard({ forming }: { forming: Forming }) {
           {forming.count} of {forming.needed} thoughts
         </span>
       </p>
-      <p className="pattern__line">
-        {forming.count === 0
-          ? "Record your first thought to start your constellation."
-          : `Record ${left} more ${left === 1 ? "thought" : "thoughts"} to see your first three mirrors.`}
-      </p>
-      {forming.tone && (
-        <p className="pattern__line">
-          So far the tone is mostly <span style={{ color: EMOTION_COLOURS[forming.tone] }}>{EMOTION_NAMES[forming.tone].toLowerCase()}</span>
-          {forming.need && (
-            <>
-              , reaching for <span style={{ color: NEED_COLOURS[forming.need] }}>{NEED_NAMES[forming.need].toLowerCase()}</span>
-            </>
-          )}
-          .
-        </p>
-      )}
+      {forming.count === 0 && <p className="pattern__line">Record your first thought to start your constellation.</p>}
     </article>
   );
 }
@@ -152,6 +136,7 @@ export function PatternsPanel({
   readBy,
   onClose,
   onEvidence,
+  onShare,
 }: {
   open: boolean;
   insights: Insight[];
@@ -161,9 +146,12 @@ export function PatternsPanel({
   readBy: string;
   onClose: () => void;
   onEvidence: (lens: Lens, thoughtId: string) => void;
+  onShare: (() => void) | null;
 }) {
   const [filter, setFilter] = useState<Lens | "all">("all");
   const shown = insights.filter((i) => filter === "all" || i.lens === filter);
+  // Each mirror also shows under the lens that reads it best.
+  const mirrorsShown = mirrors.filter((m) => filter === "all" || m.lens === filter);
   const evidence = (lens: Lens, ids: string[]) =>
     ids.length > 0 && (
       <p className="pattern__evidence">
@@ -178,6 +166,19 @@ export function PatternsPanel({
         })}
       </p>
     );
+  const mirror = (m: Mirror, i: number) => (
+    <motion.article
+      key={m.id}
+      className="pattern pattern--mirror"
+      style={{ ["--c" as string]: MIRROR_COLOURS[m.id] }}
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0, transition: { delay: 0.06 + i * 0.05, duration: 0.4 } }}
+    >
+      <h3 className="pattern__title">{m.title}</h3>
+      <p className="pattern__line">{m.body}</p>
+      {evidence(m.lens, m.evidence)}
+    </motion.article>
+  );
   return (
     <AnimatePresence>
       {open && (
@@ -208,8 +209,16 @@ export function PatternsPanel({
               </button>
             </div>
             <p className="drawer__line">
-              What the lenses found in these {world.thoughts.length} thoughts. {readBy}
+              What the lenses found in {world.thoughts.length === 1 ? "this thought" : `these ${world.thoughts.length} thoughts`}. {readBy}
             </p>
+            {onShare && (
+              <p className="patterns__share">
+                <button type="button" className="inline-link" onClick={onShare}>
+                  Share constellation
+                </button>
+                <span>A picture of the stars alone, without a word of what you wrote.</span>
+              </p>
+            )}
             <div className="range patterns__filter" role="group" aria-label="Show patterns for">
               <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
                 All
@@ -221,27 +230,18 @@ export function PatternsPanel({
               ))}
             </div>
             <div className="drawer__body">
-              {filter === "all" && forming && <FormingCard forming={forming} />}
-              {filter === "all" && mirrors.length > 0 && (
+              {forming && <FormingCard forming={forming} />}
+              {forming?.spark && mirror(forming.spark, 0)}
+              {mirrorsShown.length > 0 && (
                 <>
                   <h3 className="patterns__heading">Three mirrors</h3>
-                  {mirrors.map((m, i) => (
-                    <motion.article
-                      key={m.id}
-                      className="pattern pattern--mirror"
-                      style={{ ["--c" as string]: MIRROR_COLOURS[m.id] }}
-                      initial={{ opacity: 0, y: 18 }}
-                      animate={{ opacity: 1, y: 0, transition: { delay: 0.06 + i * 0.05, duration: 0.4 } }}
-                    >
-                      <h3 className="pattern__title">{m.title}</h3>
-                      <p className="pattern__line">{m.body}</p>
-                      {evidence(m.lens, m.evidence)}
-                    </motion.article>
-                  ))}
-                  {shown.length > 0 && <h3 className="patterns__heading">Every lens</h3>}
+                  {mirrorsShown.map(mirror)}
+                  {shown.length > 0 && (
+                    <h3 className="patterns__heading">{filter === "all" ? "Every lens" : LENSES.find((l) => l.id === filter)?.name}</h3>
+                  )}
                 </>
               )}
-              {shown.length === 0 && !(filter === "all" && (forming || mirrors.length > 0)) && (
+              {shown.length === 0 && mirrorsShown.length === 0 && !forming && (
                 <p className="news-section__state">Not enough thoughts here yet for this lens.</p>
               )}
               {shown.map((ins, i) => (

@@ -23,6 +23,7 @@ import { KIND_COLOURS } from "./world/grade";
 import { EMOTION_NAMES, NEED_NAMES, lensColour, type Lens } from "./data/lenses";
 import { inLogic, insights, lensLinks, readExample, readOwn } from "./data/patterns";
 import { LensBar, PatternsPanel } from "./ui/Lenses";
+import { posterLine, shareConstellation } from "./ui/share";
 
 const example = readExample(exampleMind());
 const exampleNow = latestMoment(example);
@@ -68,6 +69,7 @@ export default function App() {
   const [moved, setMoved] = useState(false);
   const [back, setBack] = useState<Back | null>(null);
   const [panel, setPanel] = useState<"jump" | "news" | "compose" | "account" | "patterns" | null>(null);
+  const [talk, setTalk] = useState(false); // the diary opens already listening
   const [lens, setLens] = useState<Lens>("what");
   const [hover, setHover] = useState<{ hit: ReturnType<Engine["pick"]>; x: number; y: number }>({ hit: null, x: 0, y: 0 });
   const [toast, setToast] = useState<string | null>(null);
@@ -460,6 +462,18 @@ export default function App() {
     : null;
   const backTitle = back && !view.overview && back.id !== (focusNode?.thought.id ?? topicNode?.topic.id) ? back.label : null;
   const empty = world.topics.length === 0;
+  const landing = view.overview && !started;
+  // On phones: tap to write, hold to talk. On the landing page it sits in the intro's row of buttons.
+  const write = (inline = false) => (
+    <WriteButton
+      inline={inline}
+      onCompose={() => setPanel("compose")}
+      onTalk={() => {
+        setTalk(true);
+        setPanel("compose");
+      }}
+    />
+  );
 
   return (
     <main className={`app${view.overview ? " is-overview" : ""}${hover.hit ? " is-pointing" : ""}`}>
@@ -483,7 +497,7 @@ export default function App() {
           </>
         )}
       </div>
-      {started && <WriteButton onCompose={() => setPanel("compose")} />}
+      {!panel && !landing && write()}
 
       <TopBar
         account={accountLabel}
@@ -502,9 +516,10 @@ export default function App() {
       />
 
       <AnimatePresence>
-        {view.overview && !started && (
+        {landing && (
           <Intro
             key="intro"
+            write={panel ? null : write(true)}
             mine={source === "mine"}
             topics={world.topics.length}
             thoughts={world.thoughts.length}
@@ -597,7 +612,11 @@ export default function App() {
             : `Saved on this device for now. Sign up to keep your mind everywhere: free for 7 days, then ${PRICE}.`
         }
         blocked={!!session && access?.state === "ended"}
-        onClose={() => setPanel(null)}
+        talk={talk}
+        onClose={() => {
+          setPanel(null);
+          setTalk(false);
+        }}
         onAdd={addThought}
         onSubscribe={() => setPanel("account")}
       />
@@ -615,6 +634,13 @@ export default function App() {
           const t = world.thoughtById.get(id);
           if (t) openThought(t.index);
         }}
+        onShare={
+          engine && !empty
+            ? () => {
+                if (shareConstellation(engine.snapshot(), posterLine(visible))) say("Saved my-constellation.png.");
+              }
+            : null
+        }
       />
       {started && !empty && (
         <LensBar lens={lens} onLens={setLens} />

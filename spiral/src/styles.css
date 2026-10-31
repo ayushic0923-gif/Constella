@@ -1746,6 +1746,8 @@ a {
   color: var(--accent-ink);
   cursor: pointer;
   touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
   transition: background-color 180ms ease, transform 180ms ease;
 }
 
@@ -2110,11 +2112,27 @@ body {
   background: var(--accent);
   color: var(--accent-ink);
   cursor: pointer;
-  transition: transform 180ms ease;
+  transition: transform 180ms ease, background-color 180ms ease;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .fab:active {
   transform: scale(0.94);
+}
+
+/* On the landing page it waits at the end of the intro's buttons, where it covers no words. */
+.fab.fab--inline {
+  position: static;
+  flex: none;
+  margin-left: auto;
+}
+
+/* Held long enough: it's listening the moment it's let go. */
+.fab.is-held {
+  transform: scale(1.12);
+  background: #ff5f7e;
+  color: #fff;
 }
 
 .fab svg {
@@ -2190,6 +2208,21 @@ body {
 
 .pattern--mirror .pattern__title {
   color: var(--c);
+}
+
+.patterns__share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 0 0 14px;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.patterns__share .inline-link {
+  font-size: inherit;
+  font-weight: 500;
 }
 
 .forming {

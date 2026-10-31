@@ -1,5 +1,5 @@
 import { tagName, type Mind, type Thought } from "./model";
-import { EMOTION_NAMES, NEED_NAMES, PATTERN_NAMES, type Emotion, type Lens, type Need, type Pattern } from "./lenses";
+import { EMOTION_NAMES, NEED_NAMES, PATTERN_NAMES, type Lens, type Need, type Pattern } from "./lenses";
 
 // The Three Mirrors: the Patterns drawer's answer to three questions, worked out from the readings.
 //   1. What was my mind running in the background?   The Invisible Thread
@@ -7,9 +7,10 @@ import { EMOTION_NAMES, NEED_NAMES, PATTERN_NAMES, type Emotion, type Lens, type
 //   3. What should I release, and what should I keep?  The Gentle Shift (release, incubate)
 // Every sentence is built from the thoughts themselves, and every mirror lists the thoughts behind it.
 
-export type MirrorKind = "thread" | "drain" | "lift" | "release" | "incubate";
+export type MirrorKind = "spark" | "thread" | "drain" | "lift" | "release" | "incubate";
 
 export const MIRROR_COLOURS: Record<MirrorKind, string> = {
+  spark: "#f9a3c0",
   thread: "#a8c6ff",
   drain: "#ff8a5b",
   lift: "#8fe3cf",
@@ -26,12 +27,11 @@ export interface Mirror {
   evidence: string[];
 }
 
-/** Before the mirrors appear: how far along, and a first reading of what's there. */
+/** Before the mirrors appear: how far along, and a first reading of the latest thought. */
 export interface Forming {
   count: number;
   needed: number;
-  tone: Emotion | null;
-  need: Need | null;
+  spark: Mirror | null;
 }
 
 export const MIRRORS_NEED = 5;
@@ -54,13 +54,25 @@ function most<T>(xs: T[]): [T, number] | null {
 
 /** Readings so far, until there are enough for the mirrors. Null once there are. */
 export function forming(mind: Mind): Forming | null {
-  const read = mind.thoughts.filter((t) => t.reading);
+  const read = mind.thoughts.filter((t) => t.reading).sort((a, b) => a.at.localeCompare(b.at));
   if (read.length >= MIRRORS_NEED) return null;
+  return { count: read.length, needed: MIRRORS_NEED, spark: spark(read[read.length - 1], MIRRORS_NEED - read.length) };
+}
+
+/** The First Spark: from the very first thought, what it sounds like and what it reaches for. */
+function spark(latest: Thought | undefined, left: number): Mirror | null {
+  if (!latest) return null;
+  const { emotion, needs } = latest.reading!;
+  const tone = EMOTION_NAMES[emotion].toLowerCase();
+  const need = needs[0] ? NEED_NAMES[needs[0]].toLowerCase() : null;
   return {
-    count: read.length,
-    needed: MIRRORS_NEED,
-    tone: most(read.map((t) => t.reading!.emotion))?.[0] ?? null,
-    need: most(read.flatMap((t) => t.reading!.needs.slice(0, 1)))?.[0] ?? null,
+    id: "spark",
+    lens: "feeling",
+    title: "First Spark: Immediate Resonance",
+    body: `Your constellation has begun. We hear a tone of ${tone}${need ? ` reaching for ${need}` : ""}. Record ${left} more ${
+      left === 1 ? "thought" : "thoughts"
+    } to see your full thread and energy audit.`,
+    evidence: [latest.id],
   };
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDate, formatTime, formatWeekday } from "../data/model";
 import { PRICE } from "../services/pricing";
@@ -139,6 +139,7 @@ export function Intro({
   onBegin,
   onJump,
   onCompose,
+  write,
 }: {
   mine: boolean;
   topics: number;
@@ -147,6 +148,8 @@ export function Intro({
   onBegin: () => void;
   onJump: () => void;
   onCompose: () => void;
+  /** The phone's write button, at the end of the row. */
+  write: ReactNode;
 }) {
   return (
     <motion.section className="intro" initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12, transition: { duration: 0.45 } }}>
@@ -192,6 +195,7 @@ export function Intro({
             </button>
           </>
         )}
+        {write}
       </div>
       <p className="intro__note">
         {mine ? "Only you can see these." : `A made-up person’s month. Keep your own: free for 7 days, then ${PRICE}.`}
@@ -200,12 +204,65 @@ export function Intro({
   );
 }
 
-/** Phones and tablets: a thumb-sized way to write, bottom right, above the topic count. */
-export function WriteButton({ onCompose }: { onCompose: () => void }) {
+const HOLD_MS = 420;
+
+/**
+ * Phones and tablets: a thumb-sized way to write, bottom right above the topic count (or in the
+ * intro's row on the landing page). Tap to write; hold, and the diary opens already listening.
+ */
+export function WriteButton({ inline, onCompose, onTalk }: { inline: boolean; onCompose: () => void; onTalk: () => void }) {
+  const [held, setHeld] = useState(false);
+  const hold = useRef<{ timer: number; held: boolean } | null>(null);
+  const skipClick = useRef(false);
+  const cancel = () => {
+    if (hold.current) window.clearTimeout(hold.current.timer);
+    hold.current = null;
+    setHeld(false);
+  };
+  useEffect(() => cancel, []);
   return (
-    <button type="button" className="fab narrow-only" onClick={onCompose} aria-label="Write a thought">
+    <button
+      type="button"
+      className={`fab narrow-only${inline ? " fab--inline" : ""}${held ? " is-held" : ""}`}
+      aria-label="Write a thought (hold to talk)"
+      onPointerDown={() => {
+        cancel();
+        const h = { timer: 0, held: false };
+        h.timer = window.setTimeout(() => {
+          h.held = true;
+          setHeld(true);
+          navigator.vibrate?.(12);
+        }, HOLD_MS);
+        hold.current = h;
+      }}
+      onPointerUp={() => {
+        const wasHeld = hold.current?.held ?? false;
+        cancel();
+        // Letting go is the tap the browser needs before it will listen.
+        if (wasHeld) {
+          skipClick.current = true;
+          onTalk();
+        }
+      }}
+      onPointerCancel={cancel}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => {
+        if (skipClick.current) {
+          skipClick.current = false;
+          return;
+        }
+        onCompose();
+      }}
+    >
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        {held ? (
+          <>
+            <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </>
+        ) : (
+          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        )}
       </svg>
     </button>
   );

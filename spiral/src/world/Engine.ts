@@ -985,6 +985,54 @@ export class Engine {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * The whole galaxy from above as a 4:5 picture, for sharing. Every word on screen is HTML over
+   * the canvas, so the picture holds only stars, nebulae and threads. It is drawn and copied in
+   * one task and the next frame draws the screen again, so the screen never shows it.
+   */
+  snapshot(): HTMLCanvasElement {
+    // Drawn as a phone would draw a 432 × 540 view, at 1080 × 1350 pixels.
+    const W = 432;
+    const H = 540;
+    const RATIO = 2.5;
+    const u = this.u;
+    const keep = { focus: u.focus.value, hover: u.hover.value };
+    this.width = W;
+    this.height = H;
+    this.renderer.setPixelRatio(RATIO);
+    this.renderer.setSize(W, H, false);
+    this.composer.setPixelRatio(RATIO);
+    this.composer.setSize(W, H);
+    this.bloom.resolution.set(W / 2, H / 2);
+    u.pixelRatio.value = RATIO;
+    (this.nearMat.uniforms.uViewport.value as THREE.Vector2).set(W * RATIO, H * RATIO);
+    const pose = this.overviewPose(newPose());
+    this.camera.aspect = W / H;
+    this.camera.fov = pose.fov;
+    this.camera.updateProjectionMatrix();
+    this.camera.position.copy(pose.pos);
+    this.camera.up.copy(UP);
+    this.camera.lookAt(pose.look);
+    this.camera.updateMatrixWorld();
+    u.overview.value = 1;
+    u.focus.value = -1;
+    u.hover.value = -1;
+    this.nearMat.uniforms.uVisible.value = 0;
+    this.galaxyMat.uniforms.uFloor.value = 0.028;
+    this.galaxyMat.uniforms.uGain.value = 1.1;
+    this.filamentLine.visible = false;
+    this.composer.render(0);
+    const out = document.createElement("canvas");
+    out.width = W * RATIO;
+    out.height = H * RATIO;
+    out.getContext("2d")!.drawImage(this.renderer.domElement, 0, 0);
+    // The next frame sets the camera, the blend and the threads back from the engine's own state.
+    u.focus.value = keep.focus;
+    u.hover.value = keep.hover;
+    this.resize();
+    return out;
+  }
+
   private minutesOf(iso: string) {
     const d = new Date(iso);
     return d.getHours() * 60 + d.getMinutes();

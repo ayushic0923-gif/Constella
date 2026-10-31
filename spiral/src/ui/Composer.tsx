@@ -208,6 +208,7 @@ export function Composer({
   people,
   saveNote,
   blocked,
+  talk,
   onClose,
   onAdd,
   onSubscribe,
@@ -217,6 +218,8 @@ export function Composer({
   people: string[];
   saveNote: string;
   blocked: boolean;
+  /** Start listening as it opens (the write button was held). */
+  talk: boolean;
   onClose: () => void;
   onAdd: (t: ComposerInput) => Promise<string | null>;
   onSubscribe: () => void;
@@ -252,12 +255,19 @@ export function Composer({
   });
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      voice.stop(); // closed mid-sentence: the microphone goes off with the page
+      return;
+    }
     setWhen(localNow());
     setError(null);
     setFolding(false);
     if (!topic && topics[0]) setTopic(topics[0]);
-    requestAnimationFrame(() => area.current?.focus());
+    if (talk && !blocked && voice.supported) {
+      // Straight to listening, with no keyboard rising over the page.
+      before.current = text;
+      void voice.start();
+    } else requestAnimationFrame(() => area.current?.focus());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
