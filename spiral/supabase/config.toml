@@ -1,4 +1,10 @@
-# Only the function settings this project needs; `supabase link` fills in the rest.
+# Only the settings this project needs; anything not declared here is left as it is.
+
+[auth]
+# Where sign-in links send people: the main address (the bare domain redirects to it).
+site_url = "https://www.ideora.space"
+# Sign-in links may only return to these. The localhost line is for `npm run dev`.
+additional_redirect_urls = ["https://www.ideora.space/**", "https://ideora.space/**", "http://localhost:5174/**"]
 
 [functions.news]
 # Public: anyone browsing the example month can see What's new.

@@ -41,6 +41,35 @@ export async function loadProfile(): Promise<Profile | null> {
   return (data as Profile | null) ?? null;
 }
 
+/** What Supabase says, in words a person can act on. */
+function plain(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("already registered") || m.includes("already been registered")) return "That email already has an account. Choose “I already have an account” to sign in.";
+  if (m.includes("invalid login")) return "That email and password don’t match.";
+  if (m.includes("not confirmed")) return "Please confirm your email first, using the link we sent you.";
+  if (m.includes("rate limit")) return "Too many sign-up attempts right now. Please try again in a little while.";
+  if (m.includes("password")) return "Choose a password of at least 8 characters.";
+  return message;
+}
+
+/**
+ * Create an account with an email and a password. With "Confirm email" off in Supabase there is
+ * nothing to send, so the person is signed in at once; with it on, `needsConfirm` is true and
+ * they must open the link that was emailed first.
+ */
+export async function signUpWithPassword(email: string, password: string): Promise<{ error: string | null; needsConfirm: boolean }> {
+  if (!supabase) return { error: "Accounts aren’t connected in this preview yet.", needsConfirm: false };
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
+  if (error) return { error: plain(error.message), needsConfirm: false };
+  return { error: null, needsConfirm: !data.session };
+}
+
+export async function signInWithPassword(email: string, password: string): Promise<string | null> {
+  if (!supabase) return "Accounts aren’t connected in this preview yet.";
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  return error ? plain(error.message) : null;
+}
+
 export async function sendSignInLink(email: string): Promise<string | null> {
   if (!supabase) return "Accounts aren’t connected in this preview yet.";
   const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });

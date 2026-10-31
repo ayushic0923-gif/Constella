@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { accountsEnabled, sendSignInLink, type Access } from "../services/supabase";
+import { accountsEnabled, signInWithPassword, signUpWithPassword, type Access } from "../services/supabase";
 import { formatDate } from "../data/model";
 
 function describe(access: Access | null): string {
@@ -26,6 +26,8 @@ export function AccountDialog({
   onSignOut: () => void;
 }) {
   const [address, setAddress] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"create" | "signin">("create");
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
@@ -39,18 +41,33 @@ export function AccountDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const send = async () => {
+  const submit = async () => {
     if (!/^\S+@\S+\.\S+$/.test(address.trim())) {
       setError("That doesn’t look like an email address.");
       return;
     }
+    if (password.length < 8) {
+      setError("Choose a password of at least 8 characters.");
+      return;
+    }
     setState("sending");
     setError(null);
-    const err = await sendSignInLink(address.trim());
+    if (mode === "signin") {
+      const err = await signInWithPassword(address.trim(), password);
+      setState("idle");
+      if (err) setError(err);
+      else setPassword(""); // signed in: the dialog switches to "Your account" by itself
+      return;
+    }
+    const { error: err, needsConfirm } = await signUpWithPassword(address.trim(), password);
     if (err) {
       setError(err);
       setState("idle");
-    } else setState("sent");
+    } else if (needsConfirm) setState("sent");
+    else {
+      setPassword("");
+      setState("idle");
+    }
   };
 
   const pay = async () => {
@@ -115,7 +132,7 @@ export function AccountDialog({
                 <h2 id="account-title" className="panel__title">
                   Check your inbox
                 </h2>
-                <p className="panel__line">We sent a sign-in link to {address}. Open it on this device and you’re in.</p>
+                <p className="panel__line">We sent a link to {address} to confirm your email. Open it and you’re in.</p>
                 <div className="panel__actions">
                   <button type="button" className="primary" onClick={onClose}>
                     Done
@@ -126,16 +143,18 @@ export function AccountDialog({
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void send();
+                  void submit();
                 }}
               >
                 <h2 id="account-title" className="panel__title">
-                  Keep your own mind
+                  {mode === "create" ? "Keep your own mind" : "Welcome back"}
                 </h2>
                 <p className="panel__line">
-                  Save your thoughts for as long as you like and see how they connect. Free for 7 days, then $1 a month. Cancel any time.
+                  {mode === "create"
+                    ? "Save your thoughts for as long as you like and see how they connect. Free for 7 days, then $1 a month. Cancel any time."
+                    : "Sign in to see your own mind again."}
                 </p>
-                {!accountsEnabled && <p className="panel__error">Accounts aren’t connected in this preview yet, so sign-up won’t send anything.</p>}
+                {!accountsEnabled && <p className="panel__error">Accounts aren’t connected in this preview yet.</p>}
                 <label className="field-label" htmlFor="account-email">
                   Email
                 </label>
@@ -149,13 +168,33 @@ export function AccountDialog({
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="you@example.com"
                 />
+                <label className="field-label" htmlFor="account-password">
+                  Password
+                </label>
+                <input
+                  id="account-password"
+                  className="field"
+                  type="password"
+                  autoComplete={mode === "create" ? "new-password" : "current-password"}
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
                 {error && <p className="panel__error">{error}</p>}
                 <div className="panel__actions">
-                  <button type="button" className="textbtn" onClick={onClose}>
-                    Not now
+                  <button
+                    type="button"
+                    className="textbtn"
+                    onClick={() => {
+                      setMode(mode === "create" ? "signin" : "create");
+                      setError(null);
+                    }}
+                  >
+                    {mode === "create" ? "I already have an account" : "Create an account"}
                   </button>
                   <button type="submit" className="primary" disabled={state === "sending" || !accountsEnabled}>
-                    {state === "sending" ? "Sending…" : "Send me a sign-in link"}
+                    {state === "sending" ? "One moment…" : mode === "create" ? "Create my account" : "Sign in"}
                   </button>
                 </div>
               </form>
