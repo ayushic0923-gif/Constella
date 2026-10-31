@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
+import { PRICE } from "./pricing";
 
-// $1 a month through Razorpay Subscriptions. The server creates the subscription
+// The monthly price (PRICE) through Razorpay Subscriptions. The server creates the subscription
 // (keys never reach the browser), Razorpay's own Checkout takes the payment, and
 // the server verifies the signature before marking the account a member.
 
@@ -43,7 +44,7 @@ export async function subscribe(email?: string): Promise<Outcome> {
       key: data.key_id,
       subscription_id: data.subscription_id,
       name: "Inside one mind",
-      description: data.starts_later ? "$1 a month, first charge when your free week ends" : "$1 a month",
+      description: data.starts_later ? `${PRICE}, first charge when your free week ends` : PRICE,
       prefill: email ? { email } : undefined,
       theme: { color: "#f9a3c0" },
       handler: async (resp: RazorpayResponse) => {

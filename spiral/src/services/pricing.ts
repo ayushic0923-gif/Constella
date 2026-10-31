@@ -12,8 +12,12 @@ const VALID_ID = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z]{2,32}$/;
 
 export const upi = VALID_ID.test(id) && name && amount > 0 && amount <= 100000 ? { id, name, amount } : null;
 
+// The Razorpay plan's price as people should read it, e.g. "₹99 a month". Set it to match the
+// plan created in Razorpay; it defaults to "$1 a month".
+const planLabel = (import.meta.env.VITE_PRICE_LABEL as string | undefined)?.trim() || "$1 a month";
+
 /** What people see as the price. */
-export const PRICE = upi ? `₹${upi.amount} a month` : "$1 a month";
+export const PRICE = upi ? `₹${upi.amount} a month` : planLabel;
 
 /** What happens after the free week, in one line. */
 export const RENEWAL = upi ? "Pay month to month; nothing renews by itself." : "Cancel any time.";
