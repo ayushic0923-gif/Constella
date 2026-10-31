@@ -250,7 +250,8 @@ function FocusCard({
       let shift = 0;
       if (box) {
         const wide = f.width > 1100;
-        const floor = f.height - (wide ? 130 : f.width < 700 ? 120 : 24);
+        // Clear of the lens bar on wide screens, and of the write button and topic count on narrow ones.
+        const floor = f.height - (wide ? 130 : f.width <= 900 ? 176 : 24);
         const ceiling = wide ? 76 : 166;
         const top = sy + box.offsetTop;
         const bottom = top + box.offsetHeight;

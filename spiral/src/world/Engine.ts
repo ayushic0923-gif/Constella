@@ -36,7 +36,11 @@ export interface Frame {
   current: number;
   /** The thought you're looking at closely, if any. */
   focus: number | null;
+  /** The thought under the pointer or a finger, if any. */
+  hover: number | null;
   flying: boolean;
+  /** A finger is moving the journey, or it is still gliding after a flick. */
+  dragging: boolean;
   /** Minutes since midnight of what you're looking at (drives the sky). */
   minutes: number;
   /** Per topic: screen x, screen y, 1 if in front, distance. */
@@ -57,6 +61,13 @@ interface Pose {
 
 const UP = new THREE.Vector3(0, 0, 1);
 const NEAR_TILE = 1500;
+/** How far one pixel of finger travel moves the journey, in topics. */
+const SWIPE_PER_PX = 0.0065;
+/** Each frame (at 60 fps) a flick keeps this much of its speed. */
+const GLIDE_KEEP = 0.92;
+/** Points along each filament arc. */
+const FIL_SEG = 24;
+const FIL_MAX = 3;
 const TOPIC_COLOUR = "#fff0d4";
 
 function easeInOut(t: number) {
@@ -140,6 +151,21 @@ export class Engine {
   private dragged = false;
   private suppressClickUntil = 0;
   private swipeAccum = 0;
+  // Touch: the finger moves the journey directly, then a flick glides and slows to a stop.
+  private touchDrag = false;
+  private gliding = false;
+  private touchVel = 0; // topics per second
+  private lastMoveAt = 0;
+  private downAt = 0;
+  private resizeTimer = 0;
+
+  // Filaments: the active thought's closest relations, drawn as glowing arcs.
+  private filamentLine!: THREE.LineSegments;
+  private filamentMat!: THREE.LineBasicMaterial;
+  private filamentSource: ((thought: number) => number[]) | null = null;
+  private filamentFrom: number | null = null;
+  private filamentTo: number[] = [];
+  private filamentAlpha = 0;
 
   constructor(canvas: HTMLCanvasElement, world: World, opts: { reducedMotion: boolean; lowPower: boolean }) {
     this.canvas = canvas;
@@ -170,7 +196,9 @@ export class Engine {
       p: 0,
       current: 0,
       focus: null,
+      hover: null,
       flying: false,
+      dragging: false,
       minutes: 0,
       topicScreen: new Float32Array(world.topics.length * 4),
       thoughtScreen: new Float32Array(world.thoughts.length * 4),
@@ -180,7 +208,32 @@ export class Engine {
       dt: 0,
     };
 
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(FIL_MAX * FIL_SEG * 2 * 3), 3));
+    fg.setDrawRange(0, 0);
+    this.filamentMat = new THREE.LineBasicMaterial({
+      color: new THREE.Color("#f9a3c0"),
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.filamentLine = new THREE.LineSegments(fg, this.filamentMat);
+    this.filamentLine.frustumCulled = false;
+    this.filamentLine.renderOrder = 5;
+    this.scene.add(this.filamentLine);
+
+    this.resizeObserver = new ResizeObserver(() => {
+      // On phones the address bar slides in and out as you move. Resizing the canvas on every
+      // step of that makes it jitter, so a height-only change waits until the bar has settled.
+      const host = canvas.parentElement ?? canvas;
+      if (matchMedia("(pointer: coarse)").matches && host.clientWidth === this.width && Math.abs(host.clientHeight - this.height) < 160) {
+        window.clearTimeout(this.resizeTimer);
+        this.resizeTimer = window.setTimeout(() => this.resize(), 180);
+        return;
+      }
+      this.resize();
+    });
     this.resizeObserver.observe(canvas.parentElement ?? canvas);
     this.resize();
     this.overviewPose(this.pose);
@@ -518,6 +571,17 @@ export class Engine {
     this.focus = null;
     this.u.focus.value = -1;
     this.u.hover.value = -1;
+    this.gliding = false;
+    this.touchVel = 0;
+    this.filamentFrom = null;
+    this.filamentTo = [];
+  }
+
+  /** Who the active thought's filaments reach: up to three thought indices, closest first. */
+  setFilamentSource(source: ((thought: number) => number[]) | null) {
+    this.filamentSource = source;
+    this.filamentFrom = null;
+    this.filamentTo = [];
   }
 
   // ---------------------------------------------------------------- poses
@@ -790,6 +854,12 @@ export class Engine {
     this.dragAxis = "none";
     this.dragged = false;
     this.swipeAccum = 0;
+    this.downAt = performance.now();
+    // A finger landing on a glide catches it where it is.
+    if (e.pointerType === "touch" && this.gliding) {
+      this.gliding = false;
+      this.touchVel = 0;
+    }
   };
 
   readonly onPointerMove = (e: PointerEvent) => {
@@ -797,22 +867,38 @@ export class Engine {
     if (!pt) return;
     const dx = e.clientX - pt.x;
     const dy = e.clientY - pt.y;
+    const touch = e.pointerType === "touch";
     if (this.dragAxis === "none") {
       const tx = e.clientX - pt.sx;
       const ty = e.clientY - pt.sy;
-      if (Math.hypot(tx, ty) < 6) return;
+      // A finger wobbles more than a mouse: under 8px it is still a tap.
+      if (Math.hypot(tx, ty) < (touch ? 8 : 6)) return;
       this.dragged = true;
-      this.dragAxis = e.pointerType === "touch" && Math.abs(ty) > Math.abs(tx) && !this.inOverview ? "swipe" : "look";
+      this.dragAxis = touch && Math.abs(ty) > Math.abs(tx) && !this.inOverview ? "swipe" : "look";
       (e.currentTarget as Element | null)?.setPointerCapture?.(e.pointerId);
+      this.lastMoveAt = performance.now();
+      this.touchVel = 0;
     }
     pt.x = e.clientX;
     pt.y = e.clientY;
-    if (this.dragAxis === "swipe") {
+    if (this.dragAxis === "swipe" && (this.focus !== null || this.flight)) {
+      // Reading one thought: a swipe still moves one topic at a time.
       this.swipeAccum -= dy;
       if (Math.abs(this.swipeAccum) > 70) {
         this.step(this.swipeAccum > 0 ? 1 : -1);
         this.swipeAccum = 0;
       }
+    } else if (this.dragAxis === "swipe") {
+      // The journey follows the finger, and remembers how fast it was moving.
+      const now = performance.now();
+      const secs = Math.max(0.004, (now - this.lastMoveAt) / 1000);
+      this.lastMoveAt = now;
+      const d = -dy * SWIPE_PER_PX;
+      this.touchDrag = true;
+      this.pGoal = THREE.MathUtils.clamp(this.pGoal + d, -0.7, this.world.topics.length - 1);
+      this.touchVel = this.touchVel * 0.6 + (d / secs) * 0.4;
+      if (d !== 0) this.wheelDir = d > 0 ? 1 : -1;
+      this.yawGoal = this.pitchGoal = 0;
     } else if (this.inOverview) {
       this.ovAzimuth -= dx * 0.004;
       this.ovElevation = THREE.MathUtils.clamp(this.ovElevation + dy * 0.003, 0.25, 1.45);
@@ -824,7 +910,22 @@ export class Engine {
 
   readonly onPointerUp = (e: PointerEvent) => {
     this.pointers.delete(e.pointerId);
-    if (this.dragged) this.suppressClickUntil = performance.now() + 150;
+    const now = performance.now();
+    if (this.dragged) this.suppressClickUntil = now + 150;
+    // On touch, a tap is short and still; a long press is not a tap.
+    else if (e.pointerType === "touch" && now - this.downAt >= 250) this.suppressClickUntil = now + 150;
+    if (this.touchDrag) {
+      this.touchDrag = false;
+      // A finger that stopped before lifting has no flick left in it.
+      if (now - this.lastMoveAt > 90) this.touchVel = 0;
+      if (!this.reduced && Math.abs(this.touchVel) > 0.4) {
+        this.wheelDir = this.touchVel > 0 ? 1 : -1;
+        this.gliding = true;
+      } else {
+        this.touchVel = 0;
+        this.settle();
+      }
+    }
     this.dragAxis = "none";
   };
 
@@ -911,8 +1012,25 @@ export class Engine {
     u.time.value = now / 1000;
     const nTopics = this.world.topics.length;
 
+    if (this.gliding) {
+      // The flick carries on and slows: it keeps GLIDE_KEEP of its speed each 60th of a second.
+      const last = this.world.topics.length - 1;
+      this.pGoal += this.touchVel * dt;
+      this.touchVel *= Math.pow(GLIDE_KEEP, dt * 60);
+      if (this.pGoal <= -0.7 || this.pGoal >= last) {
+        this.pGoal = THREE.MathUtils.clamp(this.pGoal, -0.7, last);
+        this.touchVel = 0;
+      }
+      if (Math.abs(this.touchVel) < 0.15 || this.flight) {
+        this.gliding = false;
+        this.touchVel = 0;
+        if (!this.flight) this.settle();
+      }
+    }
     if (!this.flight) {
-      const k = 1 - Math.exp(-dt * (this.reduced ? 30 : 3.4));
+      // Under a finger the journey keeps up closely; the wheel keeps its slower, smoother follow.
+      const rate = this.reduced ? 30 : this.touchDrag || this.gliding ? 10 : 3.4;
+      const k = 1 - Math.exp(-dt * rate);
       this.p += (this.pGoal - this.p) * k;
       if (Math.abs(this.pGoal - this.p) < 0.0005) this.p = this.pGoal;
     }
@@ -962,6 +1080,7 @@ export class Engine {
     gu.uTint.value = g.tint;
     gu.uExposure.value = g.exposure;
 
+    this.updateFilaments(dt, pc);
     this.composer.render(dt);
     this.watchPerformance(dt);
 
@@ -1014,7 +1133,9 @@ export class Engine {
     f.p = pc;
     f.current = this.currentTopic;
     f.focus = this.focus;
+    f.hover = this.u.hover.value >= 0 ? this.u.hover.value : null;
     f.flying = !!this.flight;
+    f.dragging = this.touchDrag || this.gliding;
     f.minutes = minutes;
     f.speed = speed;
     f.width = this.width;
@@ -1022,6 +1143,63 @@ export class Engine {
     f.dt = dt;
     this.listeners.forEach((l) => l(f));
   };
+
+  private readonly filA = new THREE.Vector3();
+  private readonly filB = new THREE.Vector3();
+  private readonly filC = new THREE.Vector3();
+
+  /** Arcs from the thought in focus (or under the pointer) to its closest relations, following the stars as they move. */
+  private updateFilaments(dt: number, pc: number) {
+    const hover = this.u.hover.value >= 0 ? this.u.hover.value : null;
+    const active = this.overview > 0.5 ? null : (this.focus ?? hover);
+    if (active !== this.filamentFrom) {
+      this.filamentFrom = active;
+      this.filamentTo = active !== null && this.filamentSource ? this.filamentSource(active).slice(0, FIL_MAX) : [];
+    }
+    const goal = this.filamentFrom !== null && this.filamentTo.length ? 1 : 0;
+    this.filamentAlpha += (goal - this.filamentAlpha) * (1 - Math.exp(-dt * 6));
+    const line = this.filamentLine;
+    const { topics, thoughts } = this.world;
+    const from = this.filamentFrom !== null ? thoughts[this.filamentFrom] : undefined;
+    if (this.filamentAlpha < 0.01 || !from) {
+      line.visible = false;
+      return;
+    }
+    line.visible = true;
+    const pulse = this.reduced ? 1 : 0.82 + 0.18 * Math.sin(this.u.time.value * 2.4);
+    this.filamentMat.opacity = this.filamentAlpha * 0.85 * pulse * (1 - this.overview);
+    const A = openPosition(from, topics[from.topic].pos, openness(from.topic, pc, this.overview), this.filA);
+    const pos = line.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const arr = pos.array as Float32Array;
+    let o = 0;
+    for (const j of this.filamentTo) {
+      const to = thoughts[j];
+      if (!to) continue;
+      const B = openPosition(to, topics[to.topic].pos, openness(to.topic, pc, this.overview), this.filB);
+      const C = this.filC.copy(A).add(B).multiplyScalar(0.5).addScaledVector(UP, A.distanceTo(B) * 0.22);
+      let px = A.x;
+      let py = A.y;
+      let pz = A.z;
+      for (let s = 1; s <= FIL_SEG; s++) {
+        const t = s / FIL_SEG;
+        const m = 1 - t;
+        const x = m * m * A.x + 2 * m * t * C.x + t * t * B.x;
+        const y = m * m * A.y + 2 * m * t * C.y + t * t * B.y;
+        const z = m * m * A.z + 2 * m * t * C.z + t * t * B.z;
+        arr[o++] = px;
+        arr[o++] = py;
+        arr[o++] = pz;
+        arr[o++] = x;
+        arr[o++] = y;
+        arr[o++] = z;
+        px = x;
+        py = y;
+        pz = z;
+      }
+    }
+    pos.needsUpdate = true;
+    line.geometry.setDrawRange(0, o / 3);
+  }
 
   private watchPerformance(dt: number) {
     if (document.hidden || dt > 0.055) return;
@@ -1037,6 +1215,7 @@ export class Engine {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     window.clearTimeout(this.wheelTimer);
+    window.clearTimeout(this.resizeTimer);
     this.blendAnim?.stop();
     this.resizeObserver.disconnect();
     this.scene.traverse((o) => {

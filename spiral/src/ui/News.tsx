@@ -45,7 +45,8 @@ export function NewsPopIn({
       const right = focused ? f.focus === anchor : f.focus === null && f.current === topic;
       const settled = right && !f.flying && f.overview < 0.05 && Math.abs(f.p - topic) < 0.05;
       settledFor.current = settled ? settledFor.current + f.dt : 0;
-      const want = settledFor.current > 1.1;
+      // On a phone an open thought's card fills the screen; headlines wait for the topic view.
+      const want = settledFor.current > 1.1 && !(focused && f.width < 700);
       if (want !== shown) {
         shown = want;
         setVisible(want);
@@ -65,7 +66,7 @@ export function NewsPopIn({
       let py = focused ? sy + 30 : sy + 42;
       px = Math.min(f.width - w - 16, Math.max(16, px));
       // Clear of the pinned date, the topic count and the lens bar (bottom on wide screens, top on narrow ones).
-      py = Math.min(f.height - (f.width < 700 ? 330 : f.width < 1100 ? 190 : 310), Math.max(f.width < 1100 ? 150 : 80, py));
+      py = Math.min(f.height - (f.width <= 900 ? 330 : f.width < 1100 ? 190 : 310), Math.max(f.width < 1100 ? 150 : 80, py));
       x.set(px);
       y.set(py);
     });

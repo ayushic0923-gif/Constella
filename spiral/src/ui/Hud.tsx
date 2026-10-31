@@ -86,7 +86,7 @@ export function TopBar({
           What’s new
         </button>
         <button type="button" className="textbtn wide-only" onClick={onCompose} aria-keyshortcuts="N">
-          Open the diary
+          Write a thought
         </button>
         {/* Narrow screens: one menu, with the diary first. */}
         <div className="menu-wrap narrow-only" ref={menuRef}>
@@ -104,7 +104,7 @@ export function TopBar({
                 transition={{ duration: 0.22, ease }}
               >
                 <button type="button" className="menu__primary" onClick={pick(onCompose)}>
-                  Open the diary
+                  Write a thought
                 </button>
                 <button type="button" onClick={pick(onJump)}>
                   Jump to
@@ -153,12 +153,12 @@ export function Intro({
       {mine ? (
         <>
           <h1 className="intro__title">
-            <span className="intro__muted">Your mind,</span> so far.
+            <span className="intro__muted">Your mind,</span> mapped as a galaxy.
           </h1>
           <p className="intro__line">
             {thoughts === 0
               ? "Nothing here yet. Add a thought and it becomes the first star."
-              : `${plural(topics, "topic", "topics")} and ${plural(thoughts, "thought", "thoughts")} from ${span}, joined by what they share. Scroll to travel through them.`}
+              : `Moments that mattered, joined by what they share: ${plural(thoughts, "thought", "thoughts")} in ${plural(topics, "topic", "topics")} from ${span}. Scroll or drag to travel through them.`}
           </p>
         </>
       ) : (
@@ -166,10 +166,15 @@ export function Intro({
           <h1 className="intro__title">
             <span className="intro__muted">A month,</span> inside one mind.
           </h1>
-          <p className="intro__line">
-            {topics} things one person kept thinking about from {span}: {thoughts} moments that mattered, and how they all
-            connect. Scroll to travel from one topic to the next.
-          </p>
+          <p className="intro__line">Moments that mattered, joined by what they share. Scroll or drag to travel through them, or tap below to start your own.</p>
+          <div className="demo-indicator">
+            <span>
+              Exploring the example galaxy ({thoughts} thoughts, {topics} topics)
+            </span>
+            <button type="button" className="inline-link" onClick={onCompose}>
+              Start my diary →
+            </button>
+          </div>
         </>
       )}
       <div className="intro__actions">
@@ -189,9 +194,20 @@ export function Intro({
         )}
       </div>
       <p className="intro__note">
-        {mine ? "Only you can see these." : `An example month of a made-up person. Keep your own: free for 7 days, then ${PRICE}.`}
+        {mine ? "Only you can see these." : `A made-up person’s month. Keep your own: free for 7 days, then ${PRICE}.`}
       </p>
     </motion.section>
+  );
+}
+
+/** Phones and tablets: a thumb-sized way to write, bottom right, above the topic count. */
+export function WriteButton({ onCompose }: { onCompose: () => void }) {
+  return (
+    <button type="button" className="fab narrow-only" onClick={onCompose} aria-label="Write a thought">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
   );
 }
 

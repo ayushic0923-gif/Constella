@@ -15,6 +15,7 @@ import {
   type Lens,
 } from "../data/lenses";
 import type { Insight } from "../data/patterns";
+import { MIRROR_COLOURS, type Forming, type Mirror } from "../data/mirrors";
 import type { World } from "../world/layout";
 
 function legend(lens: Lens): { label: string; colour: string }[] {
@@ -105,10 +106,48 @@ function Chart({ chart }: { chart: NonNullable<Insight["chart"]> }) {
   );
 }
 
-/** What the lenses found: each pattern with its number, a line of reasoning and the thoughts behind it. */
+/** Until there are enough thoughts for the mirrors: how far along, and a first reading. */
+function FormingCard({ forming }: { forming: Forming }) {
+  const left = forming.needed - forming.count;
+  return (
+    <article className="pattern">
+      <h3 className="pattern__title">Constellation forming</h3>
+      <p className="forming">
+        <span className="forming__dots" aria-hidden="true">
+          {Array.from({ length: forming.needed }, (_, i) => (
+            <span key={i} className={i < forming.count ? "is-lit" : undefined} />
+          ))}
+        </span>
+        <span>
+          {forming.count} of {forming.needed} thoughts
+        </span>
+      </p>
+      <p className="pattern__line">
+        {forming.count === 0
+          ? "Record your first thought to start your constellation."
+          : `Record ${left} more ${left === 1 ? "thought" : "thoughts"} to see your first three mirrors.`}
+      </p>
+      {forming.tone && (
+        <p className="pattern__line">
+          So far the tone is mostly <span style={{ color: EMOTION_COLOURS[forming.tone] }}>{EMOTION_NAMES[forming.tone].toLowerCase()}</span>
+          {forming.need && (
+            <>
+              , reaching for <span style={{ color: NEED_COLOURS[forming.need] }}>{NEED_NAMES[forming.need].toLowerCase()}</span>
+            </>
+          )}
+          .
+        </p>
+      )}
+    </article>
+  );
+}
+
+/** What the lenses found: the three mirrors first, then each pattern with its number, a line of reasoning and the thoughts behind it. */
 export function PatternsPanel({
   open,
   insights,
+  mirrors,
+  forming,
   world,
   readBy,
   onClose,
@@ -116,6 +155,8 @@ export function PatternsPanel({
 }: {
   open: boolean;
   insights: Insight[];
+  mirrors: Mirror[];
+  forming: Forming | null;
   world: World;
   readBy: string;
   onClose: () => void;
@@ -123,6 +164,20 @@ export function PatternsPanel({
 }) {
   const [filter, setFilter] = useState<Lens | "all">("all");
   const shown = insights.filter((i) => filter === "all" || i.lens === filter);
+  const evidence = (lens: Lens, ids: string[]) =>
+    ids.length > 0 && (
+      <p className="pattern__evidence">
+        {ids.map((id) => {
+          const n = world.thoughtById.get(id);
+          if (!n) return null;
+          return (
+            <button key={id} type="button" className="evidence" onClick={() => onEvidence(lens, id)}>
+              {n.thought.title}
+            </button>
+          );
+        })}
+      </p>
+    );
   return (
     <AnimatePresence>
       {open && (
@@ -166,7 +221,29 @@ export function PatternsPanel({
               ))}
             </div>
             <div className="drawer__body">
-              {shown.length === 0 && <p className="news-section__state">Not enough thoughts here yet to see a pattern.</p>}
+              {filter === "all" && forming && <FormingCard forming={forming} />}
+              {filter === "all" && mirrors.length > 0 && (
+                <>
+                  <h3 className="patterns__heading">Three mirrors</h3>
+                  {mirrors.map((m, i) => (
+                    <motion.article
+                      key={m.id}
+                      className="pattern pattern--mirror"
+                      style={{ ["--c" as string]: MIRROR_COLOURS[m.id] }}
+                      initial={{ opacity: 0, y: 18 }}
+                      animate={{ opacity: 1, y: 0, transition: { delay: 0.06 + i * 0.05, duration: 0.4 } }}
+                    >
+                      <h3 className="pattern__title">{m.title}</h3>
+                      <p className="pattern__line">{m.body}</p>
+                      {evidence(m.lens, m.evidence)}
+                    </motion.article>
+                  ))}
+                  {shown.length > 0 && <h3 className="patterns__heading">Every lens</h3>}
+                </>
+              )}
+              {shown.length === 0 && !(filter === "all" && (forming || mirrors.length > 0)) && (
+                <p className="news-section__state">Not enough thoughts here yet for this lens.</p>
+              )}
               {shown.map((ins, i) => (
                 <motion.article
                   key={ins.id}
@@ -179,19 +256,7 @@ export function PatternsPanel({
                     <span className="pattern__figure">{ins.figure}</span> {ins.line}
                   </p>
                   {ins.chart && <Chart chart={ins.chart} />}
-                  {ins.evidence.length > 0 && (
-                    <p className="pattern__evidence">
-                      {ins.evidence.map((id) => {
-                        const n = world.thoughtById.get(id);
-                        if (!n) return null;
-                        return (
-                          <button key={id} type="button" className="evidence" onClick={() => onEvidence(ins.lens, id)}>
-                            {n.thought.title}
-                          </button>
-                        );
-                      })}
-                    </p>
-                  )}
+                  {evidence(ins.lens, ins.evidence)}
                 </motion.article>
               ))}
             </div>

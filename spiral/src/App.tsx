@@ -6,7 +6,10 @@ import { buildWorld, makeSpiral, type World } from "./world/layout";
 import { Engine } from "./world/Engine";
 import { JourneyLabels } from "./ui/Journey";
 import { HoverCard, TopicNames } from "./ui/Overview";
-import { Announcer, BackChip, Intro, OverviewHeader, Progress, Stamp, Toast, TopBar, type Range } from "./ui/Hud";
+import { Announcer, BackChip, Intro, OverviewHeader, Progress, Stamp, Toast, TopBar, WriteButton, type Range } from "./ui/Hud";
+import { LinkedChip } from "./ui/Linked";
+import { relatedOf } from "./data/related";
+import { forming, mirrors } from "./data/mirrors";
 import { JumpTo } from "./ui/JumpTo";
 import { WhatsNewPanel, type NewsGroup } from "./ui/News";
 import { AccountDialog } from "./ui/Account";
@@ -109,7 +112,13 @@ export default function App() {
       el.addEventListener("pointercancel", e.onPointerUp);
       cv.addEventListener("webglcontextlost", lost);
       let last: View = { base: -1, current: -1, focus: null, overview: true, flying: false };
+      let touching = false;
       off = e.subscribe((f) => {
+        // While a finger moves the journey, the words over the sky step back.
+        if (f.dragging !== touching) {
+          touching = f.dragging;
+          root.classList.toggle("is-touching", touching);
+        }
         const next: View = { base: Math.max(0, Math.floor(f.p)), current: f.current, focus: f.focus, overview: f.overview > 0.5, flying: f.flying };
         if (
           next.base !== last.base ||
@@ -166,6 +175,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, world, lens]);
   const found = useMemo(() => insights(visible, world), [visible, world]);
+  const mirrored = useMemo(() => mirrors(visible), [visible]);
+  const formingNow = useMemo(() => forming(visible), [visible]);
+
+  // The thought in focus (or under the pointer) reaches for its closest relations.
+  useEffect(() => {
+    engine?.setFilamentSource((i) => relatedOf(world, visible.logic, i).map((r) => r.index));
+  }, [engine, world, visible.logic]);
   const readBy = useMemo(() => {
     if (source === "example") return "The example month was read by hand through all six lenses.";
     const byClaude = visible.thoughts.filter((t) => t.reading?.by === "claude").length;
@@ -365,11 +381,21 @@ export default function App() {
     const hit = engine.pick(x, y);
     if (hit || hover.hit) setHover({ hit, x, y });
   };
-  const onHostClick = () => {
-    if (!engine || !view.overview || engine.clickSuppressed() || !hover.hit) return;
-    if (hover.hit.kind === "thought") engine.focusThought(hover.hit.index);
-    else engine.enterJourney(hover.hit.index);
+  // A tap or click on a star opens it. Phones send no hover first, so the star is picked where
+  // the finger landed, with a wider reach (1.8 times) because a fingertip is less precise.
+  const onHostClick = (e: React.MouseEvent) => {
+    if (!engine || !started || engine.clickSuppressed()) return;
+    if ((e.target as Element).closest("button, a")) return; // a label was tapped: it handles itself
+    const r = host.current!.getBoundingClientRect();
+    const reach = matchMedia("(pointer: coarse)").matches ? 14 * 1.8 : 14;
+    const hit = (view.overview ? hover.hit : null) ?? engine.pick(e.clientX - r.left, e.clientY - r.top, reach);
     setHover({ hit: null, x: 0, y: 0 });
+    if (!hit) return;
+    if (view.overview) {
+      if (hit.kind === "thought") engine.focusThought(hit.index);
+      else engine.enterJourney(hit.index);
+    } else if (hit.kind === "thought") openThought(hit.index);
+    else if (hit.index !== current) goTopic(hit.index);
   };
 
   // ------------------------------------------------------------------ writing
@@ -453,9 +479,11 @@ export default function App() {
             />
             <TopicNames engine={engine} world={world} active={started} onPick={(i) => engine.enterJourney(i)} />
             {view.overview && <HoverCard world={world} hit={hover.hit} x={hover.x} y={hover.y} />}
+            <LinkedChip engine={engine} world={world} logic={visible.logic} />
           </>
         )}
       </div>
+      {started && <WriteButton onCompose={() => setPanel("compose")} />}
 
       <TopBar
         account={accountLabel}
@@ -576,6 +604,8 @@ export default function App() {
       <PatternsPanel
         open={panel === "patterns"}
         insights={found}
+        mirrors={mirrored}
+        forming={formingNow}
         world={world}
         readBy={readBy}
         onClose={() => setPanel(null)}

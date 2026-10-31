@@ -2064,3 +2064,156 @@ a {
     width: min(232px, 100%);
   }
 }
+
+/* ------------------------------------------------------------------ phones and tablets */
+
+/* The address bar slides in and out on phones: size to what is actually visible. */
+@supports (height: 100dvh) {
+  .app {
+    bottom: auto;
+    height: 100dvh;
+  }
+}
+
+/* No pull-to-refresh or page swipe stealing a drag through the galaxy. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.sky__canvas {
+  touch-action: none;
+}
+
+/* While a finger travels the journey, the words over the sky step back, then return. */
+.topbar,
+.intro > * {
+  transition: opacity 0.3s ease;
+}
+
+.app.is-touching .topbar,
+.app.is-touching .intro > * {
+  opacity: 0.3;
+}
+
+/* A thumb-sized way to write, above the topic count. */
+.fab {
+  position: fixed;
+  right: max(var(--margin), env(safe-area-inset-right, 0px));
+  bottom: calc(clamp(20px, 4vh, 40px) + 64px + env(safe-area-inset-bottom, 0px));
+  z-index: 4;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  transition: transform 180ms ease;
+}
+
+.fab:active {
+  transform: scale(0.94);
+}
+
+.fab svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto;
+}
+
+/* ------------------------------------------------------------------ the example, at a glance */
+
+.demo-indicator {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin: -12px 0 28px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(26, 32, 57, 0.72);
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.demo-indicator .inline-link {
+  font-size: inherit;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* ------------------------------------------------------------------ linked by */
+
+.linked-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(26, 32, 57, 0.82);
+  font-size: var(--step-small);
+  color: var(--ink);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.linked-chip::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+/* ------------------------------------------------------------------ three mirrors */
+
+.patterns__heading {
+  margin: 26px 0 0;
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.patterns__heading:first-child {
+  margin-top: 6px;
+}
+
+.pattern--mirror .pattern__title {
+  color: var(--c);
+}
+
+.forming {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 12px 0 0;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.forming__dots {
+  display: inline-flex;
+  gap: 7px;
+}
+
+.forming__dots span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(243, 241, 247, 0.16);
+}
+
+.forming__dots span.is-lit {
+  background: var(--accent);
+}
