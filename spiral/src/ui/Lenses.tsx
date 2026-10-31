@@ -1,0 +1,203 @@
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  EMOTION_COLOURS,
+  EMOTION_NAMES,
+  LENSES,
+  LOGIC_COLOURS,
+  LOGIC_NAMES,
+  NEED_COLOURS,
+  NEED_NAMES,
+  PATTERN_COLOURS,
+  PATTERN_NAMES,
+  TIME_COLOURS,
+  TIME_NAMES,
+  type Lens,
+} from "../data/lenses";
+import type { Insight } from "../data/patterns";
+import type { World } from "../world/layout";
+
+function legend(lens: Lens): { label: string; colour: string }[] {
+  const from = <K extends string>(names: Record<K, string>, colours: Record<K, string>) =>
+    (Object.keys(names) as K[]).map((k) => ({ label: names[k], colour: colours[k] }));
+  switch (lens) {
+    case "feeling":
+      return from(EMOTION_NAMES, EMOTION_COLOURS);
+    case "need":
+      return from(NEED_NAMES, NEED_COLOURS);
+    case "thinking":
+      return (["rumination", "self-criticism", "avoidance", "comparison", "catastrophising", "reframe", "self-compassion", "action"] as const).map((k) => ({
+        label: PATTERN_NAMES[k],
+        colour: PATTERN_COLOURS[k],
+      }));
+    case "logic":
+      return from(LOGIC_NAMES, LOGIC_COLOURS);
+    case "time":
+      return from(TIME_NAMES, TIME_COLOURS);
+    default:
+      return [
+        { label: "Same topic", colour: "#e6dcf0" },
+        { label: "Across topics", colour: "#f9a3c0" },
+      ];
+  }
+}
+
+/** Switch how the threads are read: what thoughts share, how they feel, what they need… */
+export function LensBar({ lens, onLens }: { lens: Lens; onLens: (l: Lens) => void }) {
+  const active = LENSES.find((l) => l.id === lens)!;
+  return (
+    <div className="lensbar">
+      <div className="lensbar__tabs" role="radiogroup" aria-label="Read the connections by">
+        {LENSES.map((l) => (
+          <button key={l.id} type="button" role="radio" aria-checked={lens === l.id} onClick={() => onLens(l.id)}>
+            {l.name}
+          </button>
+        ))}
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={lens}
+          className="lensbar__legend"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.25 }}
+        >
+          <span className="lensbar__question">{active.question}</span>
+          {legend(lens).map((x) => (
+            <span key={x.label} className="lensbar__key" style={{ ["--c" as string]: x.colour }}>
+              {x.label}
+            </span>
+          ))}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Chart({ chart }: { chart: NonNullable<Insight["chart"]> }) {
+  if (chart.kind === "hours") {
+    const max = Math.max(1, ...chart.values);
+    return (
+      <svg className="pattern__hours" viewBox="0 0 240 48" role="img" aria-label="Thoughts by hour of the day">
+        {chart.values.map((v, h) => (
+          <rect key={h} x={h * 10 + 1} y={48 - (v / max) * 44} width={8} height={Math.max(1, (v / max) * 44)} rx={2} fill={h >= 22 || h < 5 ? "#7f93d6" : chart.colour} />
+        ))}
+      </svg>
+    );
+  }
+  const total = chart.parts.reduce((s, p) => s + p.value, 0) || 1;
+  return (
+    <div className="pattern__split">
+      <div className="pattern__bar" aria-hidden="true">
+        {chart.parts.map((p) => (
+          <span key={p.label} style={{ flexGrow: p.value, background: p.colour }} />
+        ))}
+      </div>
+      <p className="pattern__keys">
+        {chart.parts.map((p) => (
+          <span key={p.label} style={{ ["--c" as string]: p.colour }}>
+            {p.label} {Math.round((p.value / total) * 100)}%
+          </span>
+        ))}
+      </p>
+    </div>
+  );
+}
+
+/** What the lenses found: each pattern with its number, a line of reasoning and the thoughts behind it. */
+export function PatternsPanel({
+  open,
+  insights,
+  world,
+  readBy,
+  onClose,
+  onEvidence,
+}: {
+  open: boolean;
+  insights: Insight[];
+  world: World;
+  readBy: string;
+  onClose: () => void;
+  onEvidence: (lens: Lens, thoughtId: string) => void;
+}) {
+  const [filter, setFilter] = useState<Lens | "all">("all");
+  const shown = insights.filter((i) => filter === "all" || i.lens === filter);
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="scrim scrim--side"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onPointerDown={(e) => e.target === e.currentTarget && onClose()}
+        >
+          <motion.aside
+            className="drawer drawer--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patterns-title"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", stiffness: 300, damping: 34 }}
+            onKeyDown={(e) => e.key === "Escape" && onClose()}
+          >
+            <div className="drawer__head">
+              <h2 id="patterns-title" className="drawer__title">
+                Patterns
+              </h2>
+              <button type="button" className="textbtn" onClick={onClose} autoFocus>
+                Close
+              </button>
+            </div>
+            <p className="drawer__line">
+              What the lenses found in these {world.thoughts.length} thoughts. {readBy}
+            </p>
+            <div className="range patterns__filter" role="group" aria-label="Show patterns for">
+              <button type="button" aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
+                All
+              </button>
+              {LENSES.map((l) => (
+                <button key={l.id} type="button" aria-pressed={filter === l.id} onClick={() => setFilter(l.id)}>
+                  {l.name}
+                </button>
+              ))}
+            </div>
+            <div className="drawer__body">
+              {shown.length === 0 && <p className="news-section__state">Not enough thoughts here yet to see a pattern.</p>}
+              {shown.map((ins, i) => (
+                <motion.article
+                  key={ins.id}
+                  className="pattern"
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0, transition: { delay: 0.06 + i * 0.035, duration: 0.4 } }}
+                >
+                  <h3 className="pattern__title">{ins.title}</h3>
+                  <p className="pattern__line">
+                    <span className="pattern__figure">{ins.figure}</span> {ins.line}
+                  </p>
+                  {ins.chart && <Chart chart={ins.chart} />}
+                  {ins.evidence.length > 0 && (
+                    <p className="pattern__evidence">
+                      {ins.evidence.map((id) => {
+                        const n = world.thoughtById.get(id);
+                        if (!n) return null;
+                        return (
+                          <button key={id} type="button" className="evidence" onClick={() => onEvidence(ins.lens, id)}>
+                            {n.thought.title}
+                          </button>
+                        );
+                      })}
+                    </p>
+                  )}
+                </motion.article>
+              ))}
+            </div>
+          </motion.aside>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}

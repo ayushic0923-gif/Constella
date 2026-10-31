@@ -1,0 +1,19 @@
+# Only the function settings this project needs; `supabase link` fills in the rest.
+
+[functions.news]
+# Public: anyone browsing the example month can see What's new.
+verify_jwt = false
+
+[functions.razorpay-webhook]
+# Called by Razorpay, which has no Supabase token; every call is checked by its signature instead.
+verify_jwt = false
+
+[functions.razorpay-subscription]
+verify_jwt = true
+
+[functions.razorpay-verify]
+verify_jwt = true
+
+[functions.analyze]
+# Signed-in only; it also checks the thought belongs to the caller.
+verify_jwt = true
