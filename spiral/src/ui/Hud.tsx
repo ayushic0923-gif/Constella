@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDate, formatTime, formatWeekday } from "../data/model";
+import { PRICE } from "../services/pricing";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -188,7 +189,7 @@ export function Intro({
         )}
       </div>
       <p className="intro__note">
-        {mine ? "Only you can see these." : "An example month of a made-up person. Keep your own: free for 7 days, then $1 a month."}
+        {mine ? "Only you can see these." : `An example month of a made-up person. Keep your own: free for 7 days, then ${PRICE}.`}
       </p>
     </motion.section>
   );

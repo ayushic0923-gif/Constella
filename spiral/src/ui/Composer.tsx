@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { KIND_NAMES, KINDS, extractTags, formatTime, formatWeekday, formatDate, tagKind, tagName, type Kind } from "../data/model";
 import { EMOTION_COLOURS, EMOTION_NAMES, NEED_NAMES, readByRules } from "../data/lenses";
 import { KIND_COLOURS } from "../world/grade";
+import { PRICE, upi } from "../services/pricing";
 
 // The diary: a night page that rises over the galaxy. Speak into it, let Wispr
 // Flow type into it, or write. Whatever lands on the page becomes a star.
@@ -408,13 +409,17 @@ export function Composer({
 
             {blocked ? (
               <>
-                <p className="diary__prompt">Your free week has ended. Subscribe for $1 a month to keep writing; everything you saved is still here.</p>
+                <p className="diary__prompt">
+                  {upi
+                    ? `Your free week has ended. Pay ₹${upi.amount} for 30 more days to keep writing; everything you saved is still here.`
+                    : `Your free week has ended. Subscribe for ${PRICE} to keep writing; everything you saved is still here.`}
+                </p>
                 <div className="panel__actions">
                   <button type="button" className="textbtn" onClick={onClose}>
                     Not now
                   </button>
                   <button type="button" className="primary" onClick={onSubscribe}>
-                    Subscribe for $1 a month
+                    {upi ? "Pay with UPI" : `Subscribe for ${PRICE}`}
                   </button>
                 </div>
               </>

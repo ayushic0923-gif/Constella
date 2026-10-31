@@ -1933,3 +1933,134 @@ a {
     top: 108px;
   }
 }
+
+/* ------------------------------------------------------------------ pay by UPI */
+
+.panel--wide {
+  width: min(680px, 100%);
+}
+
+.upi__grid {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  margin: 4px 0 22px;
+}
+
+.upi__scan {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+/* A QR code has to be dark on light to scan, so it sits on a white tile. */
+.upi__qr {
+  display: grid;
+  place-items: center;
+  width: 232px;
+  height: 232px;
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.upi__qr img {
+  display: block;
+  width: 208px;
+  height: 208px;
+}
+
+.upi__qr-wait {
+  font-size: var(--step-small);
+  color: #4c4f66;
+}
+
+.upi__scan a.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  text-decoration: none;
+}
+
+.upi__hint {
+  margin: 0;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.upi__amount {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.5rem);
+  line-height: 1;
+  letter-spacing: -0.022em;
+  font-variant-numeric: tabular-nums;
+}
+
+.upi__to {
+  margin: 6px 0 0;
+  font-size: var(--step-body);
+}
+
+.upi__id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 8px 0 18px;
+  font-size: var(--step-small);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.upi__steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 0 1.25em;
+  font-size: var(--step-small);
+  line-height: 1.5;
+}
+
+.upi__steps li::marker {
+  color: var(--accent);
+}
+
+.upi__state {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--step-small);
+}
+
+.upi__state strong {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.upi__state--approved strong {
+  color: #8fe3cf;
+}
+
+.upi__state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .upi__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .upi__qr {
+    width: min(232px, 100%);
+  }
+}

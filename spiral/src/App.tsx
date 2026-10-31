@@ -10,6 +10,7 @@ import { Announcer, BackChip, Intro, OverviewHeader, Progress, Stamp, Toast, Top
 import { JumpTo } from "./ui/JumpTo";
 import { WhatsNewPanel, type NewsGroup } from "./ui/News";
 import { AccountDialog } from "./ui/Account";
+import { PRICE } from "./services/pricing";
 import { Composer, type ComposerInput } from "./ui/Composer";
 import { accessOf, loadProfile, supabase, type Profile } from "./services/supabase";
 import { accountStore, deviceStore, type Store } from "./services/store";
@@ -548,6 +549,9 @@ export default function App() {
         access={access}
         onClose={() => setPanel(null)}
         onSubscribe={startSubscription}
+        onRefresh={() => {
+          if (session) void loadProfile().then((p) => setProfile(p));
+        }}
         onSignOut={() => {
           supabase?.auth.signOut();
           setSource("example");
@@ -562,7 +566,7 @@ export default function App() {
         saveNote={
           session
             ? "It joins your mind, saved to your account. Claude reads it for patterns."
-            : "Saved on this device for now. Sign up to keep your mind everywhere: free for 7 days, then $1 a month."
+            : `Saved on this device for now. Sign up to keep your mind everywhere: free for 7 days, then ${PRICE}.`
         }
         blocked={!!session && access?.state === "ended"}
         onClose={() => setPanel(null)}

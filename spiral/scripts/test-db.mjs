@@ -22,7 +22,7 @@ await db.exec(`
   create role anon nologin;
   create role authenticated nologin;
   create schema auth;
-  create table auth.users (id uuid primary key);
+  create table auth.users (id uuid primary key, email text);
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to authenticated, anon;
@@ -33,7 +33,7 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
   await db.exec(readFileSync(join(dir, f), "utf8"));
   console.log(`applied ${f}`);
 }
-await db.exec(`insert into auth.users values ('${A}'), ('${B}');`);
+await db.exec(`insert into auth.users values ('${A}', 'a@example.com'), ('${B}', 'b@example.com');`);
 
 const as = async (user, sql, params) => {
   await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${user ?? ""}', false); set role ${user ? "authenticated" : "anon"};`);
@@ -116,6 +116,31 @@ ok(scheduled.err === undefined, "a card set up with the first charge pending cou
 await admin(`update public.profiles set subscription_status = 'halted' where id = '${A}'`);
 const halted = await tryAs(A, `insert into public.thoughts (topic_id, title, body, kind) values ($1, 'Halted', 'Payment failed', 'idea')`, [topic.id]);
 ok(halted.err !== undefined, "a halted subscription stops new thoughts");
+
+// Paying by UPI: the person submits the reference; only the owner can approve it.
+const claim = await tryAs(A, `insert into public.payments (utr, amount_inr) values ('123456789012', 99) returning status, email`);
+ok(claim.err === undefined && claim.res.rows[0].status === "pending", "a person can submit a UPI payment reference");
+ok(claim.res?.rows[0].email === "a@example.com", "the claim records whose payment it is");
+ok((await tryAs(A, `insert into public.payments (utr, amount_inr) values ('12345', 99)`)).err !== undefined, "a UPI reference must be 12 digits");
+ok((await tryAs(B, `insert into public.payments (utr, amount_inr) values ('123456789012', 99)`)).err !== undefined, "one payment cannot unlock two accounts");
+ok((await as(B, `select * from public.payments`)).rows.length === 0, "nobody else can see someone's claim");
+ok((await tryAs(A, `update public.payments set status = 'approved'`)).err !== undefined, "a person cannot approve their own payment");
+ok((await tryAs(A, `insert into public.payments (utr, amount_inr, status) values ('222222222222', 99, 'approved')`)).err !== undefined, "nor submit a claim that is already approved");
+ok((await tryAs(A, `insert into public.payments (utr, amount_inr) values ('333333333333', 99)`)).err === undefined, "a second claim can wait");
+ok((await tryAs(A, `insert into public.payments (utr, amount_inr) values ('444444444444', 99)`)).err === undefined, "a third claim can wait");
+ok((await tryAs(A, `insert into public.payments (utr, amount_inr) values ('555555555555', 99)`)).err !== undefined, "no more than three claims wait at once");
+const stillLocked = await tryAs(A, `insert into public.thoughts (topic_id, title, body, kind) values ($1, 'Early', 'Claim only', 'idea')`, [topic.id]);
+ok(stillLocked.err !== undefined, "a claim alone unlocks nothing");
+await admin(`update public.payments set status = 'approved' where utr = '123456789012'`);
+const unlocked = await tryAs(A, `insert into public.thoughts (topic_id, title, body, kind) values ($1, 'Paid', 'UPI approved', 'idea') returning id`, [topic.id]);
+ok(unlocked.err === undefined, "once the owner approves, the account can write again");
+const upiProfile = (await as(A, `select subscription_status, current_period_end from public.profiles`)).rows[0];
+const upiDays = (new Date(upiProfile.current_period_end) - Date.now()) / 86400000;
+ok(upiProfile.subscription_status === "active" && upiDays > 29.9 && upiDays < 30.1, "approval gives 30 days of membership");
+ok((await as(A, `select reviewed_at from public.payments where utr = '123456789012'`)).rows[0].reviewed_at !== null, "the review is time-stamped");
+await admin(`update public.payments set status = 'approved' where utr = '123456789012'`);
+const afterRepeat = (await as(A, `select current_period_end from public.profiles`)).rows[0].current_period_end;
+ok(Math.abs(new Date(afterRepeat) - new Date(upiProfile.current_period_end)) < 1000, "approving the same payment twice adds no extra time");
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

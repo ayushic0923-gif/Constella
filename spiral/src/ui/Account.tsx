@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { accountsEnabled, signInWithPassword, signUpWithPassword, type Access } from "../services/supabase";
+import { PRICE, RENEWAL, upi } from "../services/pricing";
+import { loadClaims, submitClaim, type Claim } from "../services/upi";
 import { formatDate } from "../data/model";
+import { UpiPanel } from "./Upi";
 
 function describe(access: Access | null): string {
   if (!access) return "Setting up your account…";
   if (access.state === "trial") return `Free week: ${access.daysLeft} ${access.daysLeft === 1 ? "day" : "days"} left (until ${formatDate(access.until)}).`;
-  if (access.state === "member") return access.until ? `Member. Renews on ${formatDate(access.until)}.` : "Member.";
-  return "Your free week has ended. Subscribe to keep adding thoughts; everything you saved is still here.";
+  if (access.state === "member") return access.until ? `Member ${upi ? "until" : ". Renews on"} ${formatDate(access.until)}.`.replace(" .", ".") : "Member.";
+  return "Your free week has ended. Pay to keep adding thoughts; everything you saved is still here.";
 }
 
 export function AccountDialog({
@@ -17,6 +20,7 @@ export function AccountDialog({
   onClose,
   onSubscribe,
   onSignOut,
+  onRefresh,
 }: {
   open: boolean;
   email: string | null;
@@ -24,6 +28,8 @@ export function AccountDialog({
   onClose: () => void;
   onSubscribe: () => Promise<string | null>;
   onSignOut: () => void;
+  /** Reload the account's access, for when a payment may have been approved. */
+  onRefresh: () => void;
 }) {
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
@@ -31,15 +37,24 @@ export function AccountDialog({
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const [view, setView] = useState<"account" | "upi">("account");
+  const [claims, setClaims] = useState<Claim[]>([]);
   const input = useRef<HTMLInputElement>(null);
+
+  const refresh = () => {
+    onRefresh();
+    if (upi) void loadClaims().then(setClaims);
+  };
 
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setView("account");
     if (state !== "sent") setState("idle");
+    if (email) refresh();
     requestAnimationFrame(() => input.current?.focus());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, email]);
 
   const submit = async () => {
     if (!/^\S+@\S+\.\S+$/.test(address.trim())) {
@@ -76,6 +91,8 @@ export function AccountDialog({
     setPaying(false);
   };
 
+  const waiting = claims.find((c) => c.status === "pending");
+
   return (
     <AnimatePresence>
       {open && (
@@ -88,7 +105,7 @@ export function AccountDialog({
           onPointerDown={(e) => e.target === e.currentTarget && onClose()}
         >
           <motion.div
-            className="panel"
+            className={`panel${email && view === "upi" ? " panel--wide" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="account-title"
@@ -103,16 +120,37 @@ export function AccountDialog({
               }
             }}
           >
-            {email ? (
+            {email && view === "upi" && upi ? (
+              <UpiPanel
+                claims={claims}
+                onBack={() => {
+                  setView("account");
+                  refresh();
+                }}
+                onSubmit={async (utr) => {
+                  const err = await submitClaim(utr);
+                  if (!err) setClaims(await loadClaims());
+                  return err;
+                }}
+                onRefresh={refresh}
+              />
+            ) : email ? (
               <>
                 <h2 id="account-title" className="panel__title">
                   Your account
                 </h2>
                 <p className="panel__line">{email}</p>
                 <p className="panel__status">{describe(access)}</p>
-                {access && access.state !== "member" && (
+                {waiting && (
                   <p className="panel__line">
-                    $1 a month after the free week, paid through Razorpay. {access.state === "trial" ? "Subscribe now and the first charge waits until your free week ends." : ""}
+                    Your payment (reference ending {waiting.utr.slice(-4)}) is waiting to be confirmed. We’ll add your 30 days as soon as we see it.
+                  </p>
+                )}
+                {access && access.state !== "member" && !waiting && (
+                  <p className="panel__line">
+                    {upi
+                      ? `After the free week, ₹${upi.amount} buys 30 more days, paid by UPI. ${RENEWAL}`
+                      : `${PRICE} after the free week, paid through Razorpay. ${access.state === "trial" ? "Subscribe now and the first charge waits until your free week ends." : ""}`}
                   </p>
                 )}
                 {error && <p className="panel__error">{error}</p>}
@@ -120,10 +158,19 @@ export function AccountDialog({
                   <button type="button" className="textbtn" onClick={onSignOut}>
                     Sign out
                   </button>
-                  {access && access.state !== "member" && (
-                    <button type="button" className="primary" onClick={pay} disabled={paying}>
-                      {paying ? "Opening Razorpay…" : "Subscribe for $1 a month"}
-                    </button>
+                  {upi ? (
+                    access && (access.state !== "member" || access.until) && (
+                      <button type="button" className={access.state === "member" ? "textbtn" : "primary"} onClick={() => setView("upi")}>
+                        {waiting ? "See payment status" : access.state === "member" ? "Add 30 days" : `Pay ₹${upi.amount} with UPI`}
+                      </button>
+                    )
+                  ) : (
+                    access &&
+                    access.state !== "member" && (
+                      <button type="button" className="primary" onClick={pay} disabled={paying}>
+                        {paying ? "Opening Razorpay…" : `Subscribe for ${PRICE}`}
+                      </button>
+                    )
                   )}
                 </div>
               </>
@@ -151,7 +198,7 @@ export function AccountDialog({
                 </h2>
                 <p className="panel__line">
                   {mode === "create"
-                    ? "Save your thoughts for as long as you like and see how they connect. Free for 7 days, then $1 a month. Cancel any time."
+                    ? `Save your thoughts for as long as you like and see how they connect. Free for 7 days, then ${PRICE}. ${RENEWAL}`
                     : "Sign in to see your own mind again."}
                 </p>
                 {!accountsEnabled && <p className="panel__error">Accounts aren’t connected in this preview yet.</p>}

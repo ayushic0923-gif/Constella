@@ -67,6 +67,16 @@ How it works:
 
 Not done yet: moving thoughts saved on a device into a new account, and editing or deleting thoughts from the interface.
 
+## Pay by UPI (no gateway)
+
+An alternative to Razorpay for when a gateway isn't approved yet. It is off until all three of `VITE_UPI_ID`, `VITE_UPI_NAME` and `VITE_UPI_AMOUNT` (rupees) are set as Vercel environment variables; with them unset the site keeps using Razorpay.
+
+1. A signed-in person opens **Account → Pay with UPI**, scans the QR code (or taps **Open my UPI app** on a phone), pays, and enters the 12-digit UPI reference (UTR) from the confirmation.
+2. That is saved as a **pending** row in `public.payments` (see `supabase/migrations/20261031040000_upi_payments.sql`). A person can only add claims for themselves, at most three waiting at once, and one reference can only ever be used once.
+3. **You approve it:** Supabase dashboard → Table Editor → `payments`. Check the reference against your bank or UPI app, then set `status` to `approved` (or `rejected`, with a `note` they will see). A database rule then gives that account 30 days of membership; paying early adds to the end of the current period.
+
+There is no automatic confirmation: UPI to a personal or business UPI ID sends nothing back, so every payment is checked by a person. For automatic confirmation use a gateway. A third-party self-hosted gateway such as YouPI-PG was looked at and not used: it needs an always-on server and read access to bank SMS or email, and describes itself as experimental.
+
 ## Going live
 
 The Supabase project is `inside-one-mind` (ref `lgqodftreabytovaflhp`, Mumbai). Its five migrations are applied and its five functions deployed; the public URL and publishable key are in `.env.local` (git-ignored). What's left is yours to do in the dashboards:
